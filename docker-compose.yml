@@ -1,0 +1,58 @@
+version: '2'
+
+services:
+  spark-master:
+    user: root
+    working_dir: /opt/spark
+    image: apache/spark-py:v3.4.0
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - datalake:/opt/data
+      - warehouse:/opt/warehouse
+    ports:
+      - '7077:7077'
+      - '8080:8080'
+    command: ./sbin/start-master.sh
+  spark-worker:
+    user: root
+    working_dir: /opt/spark
+    image: apache/spark-py:v3.4.0
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    volumes:
+      - datalake:/opt/data
+      - warehouse:/opt/warehouse
+    # ports:
+    #   - '9000-9010:8081'
+    command: ./sbin/start-worker.sh spark://spark-master:7077
+  rest:
+    user: root
+    build:
+      context: ./rest
+    environment:
+      - PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip:/opt/app/
+    volumes:
+      - warehouse:/opt/warehouse
+      # - ./rest:/opt/app   ## uncomment for rapid development.
+    ports:
+      - '8000:8000'
+  jupyter:
+    user: root
+    working_dir: /opt/spark
+    build: 
+      context: ./jupyter
+    volumes:
+      - ./sparkcode:/opt/spark/sparkcode
+      - datalake:/opt/data
+      - warehouse:/opt/warehouse
+    environment:
+      - PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
+    ports:
+      - '8888:8888'
+    command: jupyter lab --allow-root --NotebookApp.token=secret123 --ip 0.0.0.0 --no-browser
+  
+volumes:
+  datalake:
+  warehouse:
+
