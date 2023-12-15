@@ -3,4 +3,4 @@ USER root
 RUN pip install requests
 WORKDIR /opt/app
 COPY ./extractor.py .
-CMD ["python", "/extractor.py"]
+CMD ["python", "./extractor.py"]

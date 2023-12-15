@@ -8,7 +8,7 @@ services:
     environment:
       - SPARK_NO_DAEMONIZE=true
     volumes:
-      - datalake:/opt/data
+      - datalake:/opt/datalake
       - warehouse:/opt/warehouse
     ports:
       - '7077:7077'
@@ -21,11 +21,36 @@ services:
     environment:
       - SPARK_NO_DAEMONIZE=true
     volumes:
-      - datalake:/opt/data
+      - datalake:/opt/datalake
       - warehouse:/opt/warehouse
     # ports:
     #   - '9000-9010:8081'
     command: ./sbin/start-worker.sh spark://spark-master:7077
+  # jupyter:
+  #   user: root
+  #   working_dir: /opt/spark
+  #   build: 
+  #     context: ./jupyter
+  #   volumes:
+  #     - ./sparkcode:/opt/spark/sparkcode
+  #     - datalake:/opt/datalake
+  #     - warehouse:/opt/warehouse
+  #   environment:
+  #     - PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
+  #   ports:
+  #     - '8888:8888'
+  #   command: jupyter lab --allow-root --NotebookApp.token=secret123 --ip 0.0.0.0 --no-browser
+  extractor:
+    build: 
+      context: ./extractor
+    volumes:
+      - datalake:/opt/datalake
+  tfidf_calculator:
+    build:
+      context: ./tfidf_calculator
+    volumes:
+      - datalake:/opt/datalake
+      - warehouse:/opt/warehouse
   rest:
     user: root
     build:
@@ -36,26 +61,7 @@ services:
       - warehouse:/opt/warehouse
       # - ./rest:/opt/app   ## uncomment for rapid development.
     ports:
-      - '8000:8000'
-  jupyter:
-    user: root
-    working_dir: /opt/spark
-    build: 
-      context: ./jupyter
-    volumes:
-      - ./sparkcode:/opt/spark/sparkcode
-      - datalake:/opt/data
-      - warehouse:/opt/warehouse
-    environment:
-      - PYTHONPATH=/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
-    ports:
-      - '8888:8888'
-    command: jupyter lab --allow-root --NotebookApp.token=secret123 --ip 0.0.0.0 --no-browser
-  extractor:
-    build: 
-      context: ./extractor
-    volumes:
-      - datalake:/opt/data
+      - '9090:9090'
   
 volumes:
   datalake:

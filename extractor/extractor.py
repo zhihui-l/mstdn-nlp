@@ -19,7 +19,7 @@ def main():
         "https://mastodon.social/api/v1/timelines/public",
         "https://fosstodon.org/api/v1/timelines/public"
     ]
-    data_directory = "/opt/data"
+    data_directory = "/opt/datalake"
 
     while True:
         os.makedirs(data_directory, exist_ok=True)
