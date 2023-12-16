@@ -13,31 +13,33 @@ from fastapi.testclient import TestClient
 
 app = FastAPI()
 
-WAREHOUSE_PATH = "/opt/warehouse"
-schema = StructType([
-    StructField("id", StringType(), True),
-    StructField("username", StringType(), True),
-    StructField("filtered_words", ArrayType(StringType()), True),
-    StructField("features", VectorUDT(), True)
-])
+# WAREHOUSE_PATH = "/opt/warehouse"
+# schema = StructType([
+#     StructField("id", StringType(), True),
+#     StructField("username", StringType(), True),
+#     StructField("filtered_words", ArrayType(StringType()), True),
+#     StructField("features", VectorUDT(), True)
+# ])
 
-spark_session = SparkSession.builder\
-    .appName("RestAPI")\
-    .master("spark://spark-master:7077")\
-    .config("spark.executor.instances", 1) \
-    .config("spark.cores.max", 2)\
-    .config("spark.sql.warehouse.dir", WAREHOUSE_PATH) \
-    .getOrCreate()
-tfidf_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH)
-# @app.get("/api/v1/accounts/")
-@app.get("/api/v1/accounts/", response_model=List[Dict[str, Union[str, int]]]) # for Swagger API
+# spark_session = SparkSession.builder\
+#     .appName("RestAPI")\
+#     .master("spark://spark-master:7077")\
+#     .config("spark.executor.instances", 1) \
+#     .config("spark.cores.max", 2)\
+#     .config("spark.sql.warehouse.dir", WAREHOUSE_PATH) \
+#     .getOrCreate()
+# tfidf_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH)
+@app.get("/api/v1/accounts/")
+# @app.get("/api/v1/accounts/", response_model=List[Dict[str, Union[str, int]]]) # for Swagger API
 def get_accounts():
-    tfidf_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH)
+    # tfidf_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH)
     
-    # Convert TF-IDF matrix to Pandas DataFrame for easier manipulation
-    tfidf_pd = tfidf_df.toPandas()
-    accounts = tfidf_pd[['username', 'id']].to_dict(orient='records')
-    return accounts
+    # # Convert TF-IDF matrix to Pandas DataFrame for easier manipulation
+    # tfidf_pd = tfidf_df.toPandas()
+    # accounts = tfidf_pd[['username', 'id']].to_dict(orient='records')
+    # return accounts
+    print("llllllllllllllll")
+    return {"Hello": "World"}
 
 @app.get("/")
 def read_root():
@@ -65,7 +67,7 @@ def read_item(item_id: int, q: Union[str, None] = None):
 #         return list_of_dicts
 #     finally:
 #         spark_session.stop()
-client = TestClient(app)
-response = client.get("/api/v1/accounts/")
-print(response.status_code)
-print(response.json())
+# client = TestClient(app)
+# response = client.get("/api/v1/accounts/")
+# print(response.status_code)
+# print(response.json())
