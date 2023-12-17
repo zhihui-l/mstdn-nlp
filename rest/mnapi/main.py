@@ -1,3 +1,6 @@
+##########################################
+# Some codes are referenced from ChatGPT #
+##########################################
 from fastapi import FastAPI, HTTPException
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType
@@ -5,9 +8,7 @@ from pyspark.ml.linalg import VectorUDT, SparseVector, Vectors
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from typing import Union, List, Dict, Any # for Swagger 
-from fastapi.testclient import TestClient
 import logging
-from typing import Union
 
 
 

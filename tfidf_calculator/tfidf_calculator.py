@@ -1,3 +1,6 @@
+##########################################
+# Some codes are referenced from ChatGPT #
+##########################################
 from pyspark.sql import SparkSession
 import os, json, time
 from pyspark.sql.functions import col, concat_ws, collect_list, lower, regexp_replace, udf, lit

@@ -1,3 +1,6 @@
+##########################################
+# Some codes are referenced from ChatGPT #
+##########################################
 import requests
 import time
 import json
