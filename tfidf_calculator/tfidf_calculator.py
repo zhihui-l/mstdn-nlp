@@ -51,7 +51,7 @@ def main():
                 # Select the required columns (user id, username, and features)
                 tfidf_matrix = rescaledData.select("user_id", "username", "filtered_words", "features")
                 tfidf_matrix.show(truncate=False)
-                tfidf_matrix.write.mode("append").parquet("opt/warehouse")
+                tfidf_matrix.write.mode("append").parquet("/opt/warehouse")
                 # Remove processed file
                 os.remove(file_path)
         time.sleep(300)
