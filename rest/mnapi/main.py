@@ -1,7 +1,7 @@
 ##########################################
 # Some codes are referenced from ChatGPT #
 ##########################################
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Path, Query
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType
 from pyspark.ml.linalg import VectorUDT, SparseVector, Vectors
@@ -9,13 +9,18 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 from typing import Union, List, Dict, Any # for Swagger 
 import logging
+from pydantic import BaseModel, Field
 
 
 
 logger = logging.getLogger("uvicorn")
 
 
-app = FastAPI()
+app = FastAPI(title="TF-IDF Service", description="A REST API for TF-IDF operations", version="1.0")
+
+class Account(BaseModel):
+    username: str = Field(..., example="john_doe")
+    user_id: str = Field(..., example="123456")
 
 WAREHOUSE_PATH = "/opt/warehouse"
 
@@ -43,8 +48,14 @@ def get_or_cache_df():
         cached_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH).cache()
     return cached_df
 
-@app.get("/api/v1/accounts/")
+@app.get("/api/v1/accounts/", response_model=List[Account], summary="Get Accounts")
 async def get_accounts():
+    """
+    Retrieve a list of accounts with their usernames and user IDs.
+    
+    Returns:
+        A list of accounts with `username` and `user_id`.
+    """
     tfidf_df = get_or_cache_df()
     # tfidf_df.printSchema()
     # Keep one instance of each duplicate account
@@ -56,8 +67,17 @@ async def get_accounts():
     accounts = unique_accounts_pd[['username', 'user_id']].to_dict(orient='records')
     return accounts
 
-@app.get("/api/v1/tf-idf/user-ids/{user_id}")
-def get_tfidf_for_user(user_id: str):
+@app.get("/api/v1/tf-idf/user-ids/{user_id}", summary="Get TF-IDF for User")
+def get_tfidf_for_user(user_id: str = Path(..., description="The ID of the user to retrieve TF-IDF values for")):
+    """
+    Get the TF-IDF values for a specific user based on their user ID.
+    
+    Args:
+    user_id: The unique identifier of the user.
+    
+    Returns:
+    A dictionary of words and their aggregated TF-IDF values for the specified user.
+    """
     # Read Parquet file with the defined schema
     tfidf_df = get_or_cache_df()
     tfidf_pd = tfidf_df.toPandas()
@@ -84,8 +104,17 @@ def get_tfidf_for_user(user_id: str):
 
     return tfidf_dict
 
-@app.get("/api/v1/tf-idf/user-ids/{user_id}/neighbors")
-def get_neighbors_for_user(user_id: str):
+@app.get("/api/v1/tf-idf/user-ids/{user_id}/neighbors", summary="Get Neighbors for User")
+def get_neighbors_for_user(user_id: str = Path(..., description="The ID of the user to find neighbors for")):
+    """
+    Find and return the neighbors of a specific user based on cosine similarity of TF-IDF vectors.
+    
+    Args:
+    user_id: The unique identifier of the user.
+    
+    Returns:
+    A list of user IDs that are considered nearest neighbors to the specified user.
+    """
     tfidf_df = get_or_cache_df()
     tfidf_pd = tfidf_df.toPandas()
     # Filter DataFrame for the specified user_id
