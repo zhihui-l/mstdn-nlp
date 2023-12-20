@@ -1,33 +1,154 @@
-from typing import Union
+##########################################
+# Some codes are referenced from ChatGPT #
+##########################################
+from fastapi import FastAPI, HTTPException, Path, Query
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType, ArrayType
+from pyspark.ml.linalg import VectorUDT, SparseVector, Vectors
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from typing import Union, List, Dict, Any # for Swagger 
+import logging
+from pydantic import BaseModel, Field
 
-from fastapi import FastAPI
-
-app = FastAPI()
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+logger = logging.getLogger("uvicorn")
 
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int, q: Union[str, None] = None):
-    return {"item_id": item_id, "q": q}
+app = FastAPI(title="TF-IDF Service", description="A REST API for TF-IDF operations", version="1.0")
 
-@app.get("/sparktest")
-def spark_test():
-    from pyspark.sql import SparkSession
-    spark_session = SparkSession.builder\
-    .appName("rest-test")\
+class Account(BaseModel):
+    username: str = Field(..., example="john_doe")
+    user_id: str = Field(..., example="123456")
+
+WAREHOUSE_PATH = "/opt/warehouse"
+
+schema = StructType([
+    StructField("user_id", StringType(), True),
+    StructField("username", StringType(), True),
+    StructField("filtered_words", ArrayType(StringType()), True),
+    StructField("features", VectorUDT(), True)
+])
+
+spark_session = SparkSession.builder\
+    .appName("RestAPI")\
     .master("spark://spark-master:7077")\
+    .config("spark.executor.instances", 1) \
     .config("spark.cores.max", 2)\
+    .config("spark.sql.warehouse.dir", WAREHOUSE_PATH) \
     .getOrCreate()
-    try:
-        wc2 = spark_session.read.parquet('/opt/warehouse/wordcounts.parquet/')
-        wc2.createOrReplaceTempView("wordcounts")
-        query = "SELECT * FROM wordcounts WHERE LEN(word) > 4 ORDER BY count DESC"
-        ans = spark_session.sql(query).limit(10)
-        list_of_dicts = ans.rdd.map(lambda row: row.asDict()).collect()
-        return list_of_dicts
-    finally:
-        spark_session.stop()
+
+# Global variable to store the cached DataFrame
+cached_df = None
+
+def get_or_cache_df():
+    global cached_df
+    if cached_df is None:
+        cached_df = spark_session.read.schema(schema).parquet(WAREHOUSE_PATH).cache()
+    return cached_df
+
+@app.get("/api/v1/accounts/", response_model=List[Account], summary="Get Accounts")
+async def get_accounts():
+    """
+    Retrieve a list of accounts with their usernames and user IDs.
+    
+    Returns:
+        A list of accounts with `username` and `user_id`.
+    """
+    tfidf_df = get_or_cache_df()
+    # tfidf_df.printSchema()
+    # Keep one instance of each duplicate account
+    tfidf_df = tfidf_df.select('username', 'user_id')
+    unique_accounts_df = tfidf_df.dropDuplicates()
+    # Convert the DataFrame with unique accounts to Pandas DataFrame for easier manipulation
+    unique_accounts_pd = unique_accounts_df.toPandas()
+    # logger.info(unique_accounts_pd.to_string())
+    accounts = unique_accounts_pd[['username', 'user_id']].to_dict(orient='records')
+    return accounts
+
+@app.get("/api/v1/tf-idf/user-ids/{user_id}", summary="Get TF-IDF for User")
+def get_tfidf_for_user(user_id: str = Path(..., description="The ID of the user to retrieve TF-IDF values for")):
+    """
+    Get the TF-IDF values for a specific user based on their user ID.
+    
+    Args:
+    user_id: The unique identifier of the user.
+    
+    Returns:
+    A dictionary of words and their aggregated TF-IDF values for the specified user.
+    """
+    # Read Parquet file with the defined schema
+    tfidf_df = get_or_cache_df()
+    tfidf_pd = tfidf_df.toPandas()
+    # Filter DataFrame for the specified user_id
+    user_df = tfidf_pd[tfidf_pd['user_id'] == user_id]
+
+    if user_df.empty:
+        raise HTTPException(status_code=404, detail="The user does not exist. Please enter a valid user ID.")
+
+    # Aggregate TF-IDF vectors
+    aggregated_vector = None
+    for row in user_df.itertuples():
+        if aggregated_vector is None:
+            aggregated_vector = row.features
+        else:
+            # Element-wise addition of vectors
+            aggregated_vector = Vectors.dense(aggregated_vector.toArray() + row.features.toArray())
+
+    # Create a dictionary for words and their aggregated TF-IDF values
+    tfidf_dict = {}
+    if aggregated_vector is not None:
+        for word, tfidf_value in zip(user_df['filtered_words'].explode(), aggregated_vector.toArray()):
+            tfidf_dict[word] = tfidf_dict.get(word, 0) + tfidf_value
+
+    return tfidf_dict
+
+@app.get("/api/v1/tf-idf/user-ids/{user_id}/neighbors", summary="Get Neighbors for User")
+def get_neighbors_for_user(user_id: str = Path(..., description="The ID of the user to find neighbors for")):
+    """
+    Find and return the neighbors of a specific user based on cosine similarity of TF-IDF vectors.
+    
+    Args:
+    user_id: The unique identifier of the user.
+    
+    Returns:
+    A list of user IDs that are considered nearest neighbors to the specified user.
+    """
+    tfidf_df = get_or_cache_df()
+    tfidf_pd = tfidf_df.toPandas()
+    # Filter DataFrame for the specified user_id
+    user_df = tfidf_pd[tfidf_pd['user_id'] == user_id]
+
+    if user_df.empty:
+        raise HTTPException(status_code=404, detail="The user does not exist. Please enter a valid user ID.")
+    
+    # Filter out the target user's TF-IDF vector
+    target_user_vector = user_df['features'].iloc[0].toArray().reshape(1, -1)
+
+    # Filter out the target user from the DataFrame and prepare the rest of the user vectors
+    other_users = tfidf_pd[tfidf_pd['user_id'] != user_id]
+
+    def pad_vector(vector, max_length):
+        """ Pad the vector to max_length with zeros """
+        current_length = vector.size
+        if current_length < max_length:
+            return np.append(vector, np.zeros(max_length - current_length))
+        return vector
+    
+    # Find the maximum vector length
+    max_vector_length = max(tfidf_pd['features'].apply(lambda vec: vec.size))
+
+    # Pad vectors to the same length
+    target_user_vector_padded = pad_vector(target_user_vector, max_vector_length).reshape(1, -1)
+    other_user_vectors_padded = np.array(other_users['features'].apply(lambda vec: pad_vector(vec, max_vector_length)).tolist())
+
+    # Compute cosine similarity
+    similarities = cosine_similarity(target_user_vector_padded, other_user_vectors_padded)[0]
+
+    # Get the indices of the top 10 similar users
+    top_indices = np.argsort(similarities)[::-1][:10]
+
+    # Retrieve and return the user_ids of the top similar users
+    nearest_neighbors = list(other_users.iloc[top_indices]['user_id'].values)
+    return nearest_neighbors
